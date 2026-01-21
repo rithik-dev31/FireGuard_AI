@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FireGuard AI | Command Center</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        :root {
+            --bg-dark: #080a0c;
+            --card-bg: #14181d;
+            --accent-red: #ff4b2b;
+            --accent-green: #00f2fe;
+            --text-gray: #94a3b8;
+            --border-light: #2d3748;
+        }
+
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-dark);
+            color: #e2e8f0;
+            overflow-x: hidden;
+            height: 100vh;
+        }
+
+        /* 🔥 HAMBURGER MENU */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: var(--accent-green);
+            cursor: pointer;
+            padding: 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            z-index: 1001;
+            position: fixed;
+            top: 16px;
+            left: 16px;
+        }
+
+        .mobile-menu-btn:hover {
+            background: rgba(0, 242, 254, 0.1);
+            transform: scale(1.1);
+        }
+
+        /* 🔥 SIDEBAR */
+        .sidebar {
+            width: 80px;
+            background: rgba(17, 17, 17, 0.95);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 80px 0 20px 0;
+            position: fixed;
+            left: 0;
+            top: 0;
+            height: 100vh;
+            z-index: 1000;
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .sidebar.mobile-hidden {
+            transform: translateX(-100%);
+        }
+
+        .sidebar-icon {
+            color: var(--text-gray);
+            font-size: 22px;
+            padding: 16px;
+            cursor: pointer;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            margin: 4px 0;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-icon:hover,
+        .sidebar-icon.active {
+            color: var(--accent-red);
+            background: rgba(255, 75, 43, 0.2);
+            transform: translateX(4px);
+        }
+
+        /* 🔥 MAIN CONTENT */
+        .main-content {
+            margin-left: 80px;
+            padding: 20px;
+            padding-top: 70px;
+            min-height: 100vh;
+            transition: all 0.4s ease;
+        }
+
+        /* 🔥 MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+            .mobile-menu-btn {
+                display: block;
+            }
+
+            .sidebar {
+                width: 280px;
+                transform: translateX(-100%);
+            }
+
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+                padding-top: 70px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .main-content {
+                padding: 12px;
+                padding-top: 70px;
+            }
+        }
+
+        /* 🔥 HEADER */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            background: rgba(20, 24, 29, 0.8);
+            backdrop-filter: blur(16px);
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid var(--border-light);
+            position: fixed;
+            width: calc(100% - 120px);
+            top: 20px;
+            z-index: 10000;
+        }
+
+        h1 { 
+            font-size: clamp(22px, 5vw, 28px);
+            background: linear-gradient(135deg, var(--accent-red), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0;
+        }
+
+        .header-subtitle {
+            color: var(--text-gray);
+            font-size: clamp(12px, 3vw, 14px);
+            margin-top: 4px;
+        }
+
+        /* 🔥 CONNECTION STATUS */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(20, 24, 29, 0.8);
+            padding: 10px 16px;
+            border-radius: 20px;
+            font-size: clamp(11px, 2.5vw, 12px);
+            border: 1px solid var(--border-light);
+            transition: all 0.3s ease;
+        }
+
+        .connection-status.connected {
+            background: rgba(0, 242, 254, 0.15);
+            border-color: var(--accent-green);
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .status-dot.connected {
+            background: var(--accent-green);
+            box-shadow: 0 0 12px var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        /* 🔥 MAP */
+        .map-container {
+            height: clamp(400px, 40vh, 500px);
+            background: var(--card-bg);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            margin-top: 100px;
+        }
+
+        #fireMap { height: 100%; width: 100%; border-radius: 14px; }
+
+        /* 🔥 STATS BAR */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 640px) {
+            .stats-bar {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            header{
+                width: calc(100% - 40px);
+            }
+            
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+            border-left: 4px solid var(--accent-red);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.4);
+        }
+
+        .stat-card small {
+            font-size: 12px;
+            color: var(--text-gray);
+            display: block;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card h2 {
+            font-size: clamp(24px, 6vw, 32px);
+            margin: 0;
+            font-weight: 700;
+        }
+
+        /* 🔥 TABLE */
+        .table-container {
+            background: var(--card-bg);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #1c2229;
+            padding: clamp(12px, 3vw, 16px);
+            font-size: clamp(11px, 2vw, 12px);
+            color: var(--text-gray);
+            text-align: left;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: clamp(12px, 3vw, 16px);
+            border-bottom: 1px solid var(--border-light);
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        tr:hover { 
+            background: rgba(28, 34, 41, 0.8) !important;
+        }
+
+        /* 🔥 MOBILE TABLE */
+        @media (max-width: 768px) {
+            .table-container {
+                box-shadow: none;
+                border-radius: 12px;
+            }
+            
+            table {
+                display: block;
+                width: 100%;
+                overflow-x: auto;
+            }
+            
+            thead {
+                display: none;
+            }
+            
+            tbody, tr {
+                display: block;
+            }
+            
+            tr {
+                background: var(--card-bg);
+                margin-bottom: 12px;
+                border-radius: 12px;
+                border: 1px solid var(--border-light);
+                padding: 16px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }
+            
+            td {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 0;
+                border: none;
+                position: relative;
+                min-height: 24px;
+            }
+            
+            td:before {
+                content: attr(data-label);
+                position: absolute;
+                left: 0;
+                font-weight: 600;
+                color: var(--text-gray);
+                font-size: 12px;
+                width: 45%;
+            }
+            
+            td span, td div {
+                margin-left: 50%;
+                width: 50%;
+                text-align: right;
+            }
+        }
+
+        /* 🔥 CONFIDENCE METER */
+        .confidence-meter {
+            height: 6px;
+            width: clamp(70px, 12vw, 100px);
+            background: rgba(51,51,51,0.6);
+            border-radius: 3px;
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        /* 🔥 TOAST */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: -400px;
+            background: linear-gradient(135deg, var(--accent-red), #ff416c);
+            color: white;
+            padding: 20px 24px;
+            border-radius: 16px;
+            min-width: 300px;
+            max-width: 90vw;
+            box-shadow: 0 20px 40px rgba(255, 75, 43, 0.4);
+            z-index: 9999;
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .toast.show {
+            right: 20px;
+        }
+
+        @media (max-width: 480px) {
+            .toast {
+                right: -100vw;
+                width: calc(100vw - 40px);
+            }
+            
+            .toast.show {
+                right: 20px;
+            }
+        }
+
+        .toast-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .toast-body {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        /* 🔥 ANIMATIONS */
+        @keyframes slideInAlert {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        tr.new-alert {
+            animation: slideInAlert 0.5s ease-out;
+            background: rgba(255, 75, 43, 0.15) !important;
+        }
+
+        @keyframes alertPulse {
+            0%, 100% { background: var(--bg-dark); }
+            50% { background: rgba(255, 75, 43, 0.1); }
+        }
+
+        body.alert-active {
+            animation: alertPulse 1s ease-in-out infinite;
+        }
+
+        /* 🔥 TOUCH DEVICES */
+        @media (hover: none) and (pointer: coarse) {
+            tr { min-height: 60px; }
+            .sidebar-icon { padding: 20px; }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 🔥 HAMBURGER BUTTON -->
+    <button class="mobile-menu-btn" id="mobileMenuBtn">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- 🔥 SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-icon active">
+            <i class="fas fa-fire"></i>
+        </div>
+        <div class="sidebar-icon">
+            <i class="fas fa-map-marked-alt"></i>
+        </div>
+        <div class="sidebar-icon">
+            <i class="fas fa-bell"></i>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- 🔥 HEADER -->
+        <header>
+            <div>
+                <h1>FireGuard AI</h1>
+                <p class="header-subtitle">
+                    Real-time neural fire detection | 
+                    <span id="alertCount">{{ alerts|length }}</span> active threats
+                </p>
+            </div>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot" id="wsStatus"></span>
+                <span id="wsStatusText">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- 🔥 MAP -->
+        <div class="map-container">
+            <div id="fireMap"></div>
+        </div>
+
+        <!-- 🔥 STATS -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <small>Active Alerts</small>
+                <h2 style="color:var(--accent-red)" id="statAlertCount">{{ alerts|length }}</h2>
+            </div>
+            <div class="stat-card" style="border-left-color:var(--accent-green)">
+                <small>Neural Accuracy</small>
+                <h2 style="color:var(--accent-green)">98.7%</h2>
+            </div>
+            <div class="stat-card" style="border-left-color:#fbbf24">
+                <small>Last Update</small>
+                <h2 style="color:#fbbf24" id="lastUpdate">Just now</h2>
+            </div>
+        </div>
+
+        <!-- 🔥 TABLE -->
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Location</th>
+                        <th>Intensity</th>
+                        <th>Confidence</th>
+                        <th>Time</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="alertTableBody">
+                    {% for alert in alerts %}
+                    <tr onclick="flyToAlert({{ alert.latitude }}, {{ alert.longitude }})">
+                        <td data-label="Location">{{ alert.location_name|default:"Unknown Area" }}</td>
+                        <td data-label="Intensity">{{ alert.fire_size|default:0 }} px</td>
+                        <td data-label="Confidence">
+                            <div class="confidence-meter">
+                                <div class="confidence-fill" style="width: {{ alert.flicker_confidence|default:0 }}%"></div>
+                            </div>
+                            {{ alert.flicker_confidence|default:0 }}%
+                        </td>
+                        <td data-label="Time">{{ alert.created_at|timesince }} ago</td>
+                        <td data-label="Status"><span class="badge active">ACTIVE</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 🔥 TOAST -->
+    <div class="toast" id="alertToast">
+        <div class="toast-header">
+            <i class="fas fa-fire"></i>
+            <span>NEW FIRE DETECTED!</span>
+        </div>
+        <div class="toast-body" id="toastBody">
+            Location: Unknown
+        </div>
+    </div>
+
+    <!-- 🔥 DATA -->
+    <script id="alerts-data" type="application/json">
+    [
+    {% for alert in alerts %}
+    {
+        "id": {{ alert.id|default:0 }},
+        "location_name": "{{ alert.location_name|default:'Unknown'|escapejs }}",
+        "latitude": {{ alert.latitude|default:13.0827 }},
+        "longitude": {{ alert.longitude|default:80.2707 }},
+        "fire_size": {{ alert.fire_size|default:0 }},
+        "flicker_confidence": {{ alert.flicker_confidence|default:0 }},
+        "created_at": "{{ alert.created_at|date:'H:i'|default:'00:00' }}"
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+    ]
+    </script>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // 🔥 MOBILE MENU TOGGLE
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const sidebar = document.getElementById('sidebar');
+        
+        mobileMenuBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('mobile-open');
+            sidebar.classList.toggle('mobile-hidden');
+        });
+
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768 && 
+                !e.target.closest('.sidebar') && 
+                !e.target.closest('.mobile-menu-btn') &&
+                sidebar.classList.contains('mobile-open')) {
+                sidebar.classList.remove('mobile-open');
+                sidebar.classList.add('mobile-hidden');
+            }
+        });
+
+        // 🔥 MAP INIT
+        const alertData = JSON.parse(document.getElementById('alerts-data').textContent);
+        const fireMap = L.map('fireMap').setView([13.0827, 80.2707], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(fireMap);
+
+        const markers = {};
+        let audioContext = null;
+        let currentAlertSound = null;
+
+        // 🔥 ADD MARKERS
+        alertData.forEach(alert => addMarkerToMap(alert));
+
+        function addMarkerToMap(alert) {
+            const size = Math.min(alert.fire_size / 1000, 30);
+            const icon = L.divIcon({
+                html: `<div style="width:${size}px;height:${size}px;background:radial-gradient(circle,rgba(255,75,43,0.9),rgba(255,75,43,0.4));border-radius:50%;box-shadow:0 0 20px rgba(255,75,43,0.8);animation:pulse 2s infinite;"></div>`,
+                iconSize: [size, size],
+                className: ''
+            });
+
+            const marker = L.marker([alert.latitude, alert.longitude], { icon }).addTo(fireMap);
+            marker.bindPopup(`
+                <b>🔥 ${alert.location_name}</b><br>
+                Size: ${alert.fire_size}px<br>
+                Confidence: ${alert.flicker_confidence}%<br>
+                Time: ${alert.created_at}
+            `);
+            markers[alert.id] = marker;
+        }
+
+        function flyToAlert(lat, lng) {
+            fireMap.flyTo([lat, lng], 16, { duration: 1.5 });
+        }
+
+        // 🔥 AUDIO SYSTEM
+        function initAudioContext() {
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playAlertSound() {
+            initAudioContext();
+            if (currentAlertSound) try { currentAlertSound.stop(); } catch(e) {}
+            
+            const duration = 8; // seconds
+            const now = audioContext.currentTime;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, now);
+            
+            for (let i = 0; i < duration * 2; i++) {
+                osc.frequency.setValueAtTime((i%2?800:600), now + i * 0.3);
+            }
+            
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.5, now + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+            
+            osc.connect(gain).connect(audioContext.destination);
+            osc.start(now); osc.stop(now + duration);
+            currentAlertSound = osc;
+            
+            document.body.classList.add('alert-active');
+            setTimeout(() => document.body.classList.remove('alert-active'), duration * 1000);
+        }
+
+        // 🔥 WEBSOCKET
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/fire-alerts/`;
+        let socket, reconnectAttempts = 0, maxReconnectAttempts = 5;
+
+        function connectWebSocket() {
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                console.log('🔥 WebSocket Connected!');
+                reconnectAttempts = 0;
+                updateConnectionStatus(true);
+            };
+            
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.alert) handleNewAlert(data.alert);
+            };
+            
+            socket.onerror = () => updateConnectionStatus(false);
+            socket.onclose = () => {
+                updateConnectionStatus(false);
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    setTimeout(connectWebSocket, 2000 * reconnectAttempts);
+                }
+            };
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusDot = document.getElementById('wsStatus');
+            const statusText = document.getElementById('wsStatusText');
+            const statusEl = document.getElementById('connectionStatus');
+            
+            if (connected) {
+                statusDot.classList.add('connected');
+                statusText.textContent = 'LIVE';
+                statusEl.classList.add('connected');
+            } else {
+                statusDot.classList.remove('connected');
+                statusText.textContent = 'OFFLINE';
+                statusEl.classList.remove('connected');
+            }
+        }
+
+        // 🔥 ALERT HANDLER
+        function handleNewAlert(alert) {
+            playAlertSound();
+            showToast(alert);
+            addMarkerToMap(alert);
+            addAlertToTable(alert);
+            updateStats();
+            fireMap.flyTo([alert.latitude, alert.longitude], 15, { duration: 2 });
+        }
+
+        function showToast(alert) {
+            const toast = document.getElementById('alertToast');
+            const toastBody = document.getElementById('toastBody');
+            
+            toastBody.innerHTML = `
+                <strong>${alert.location_name}</strong><br>
+                🔥 ${alert.fire_size}px | 🎯 ${alert.flicker_confidence}%
+            `;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 5000);
+        }
+
+        function addAlertToTable(alert) {
+            const tbody = document.getElementById('alertTableBody');
+            const row = document.createElement('tr');
+            row.className = 'new-alert';
+            row.onclick = () => flyToAlert(alert.latitude, alert.longitude);
+            
+            row.innerHTML = `
+                <td data-label="Location">${alert.location_name}</td>
+                <td data-label="Intensity">${alert.fire_size} px</td>
+                <td data-label="Confidence">
+                    <div class="confidence-meter">
+                        <div class="confidence-fill" style="width: ${alert.flicker_confidence}%"></div>
+                    </div>
+                    ${alert.flicker_confidence}%
+                </td>
+                <td data-label="Time">Just now</td>
+                <td data-label="Status"><span class="badge active">ACTIVE</span></td>
+            `;
+            
+            tbody.insertBefore(row, tbody.firstChild);
+            setTimeout(() => row.classList.remove('new-alert'), 500);
+        }
+
+        function updateStats() {
+            const count = parseInt(document.getElementById('alertCount').textContent) + 1;
+            document.getElementById('alertCount').textContent = count;
+            document.getElementById('statAlertCount').textContent = count;
+            document.getElementById('lastUpdate').textContent = 'Just now';
+        }
+
+        // 🔥 START
+        connectWebSocket();
+        document.addEventListener('click', initAudioContext, { once: true });
+    </script>
+</body>
+</html>

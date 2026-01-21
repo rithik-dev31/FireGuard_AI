@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FireGuard AI | Immersive HUD</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary: #ff4d00;
+            --accent: #00f2ff;
+            --safe: #00ff88;
+            --danger: #ff1111;
+            --glass: rgba(0, 0, 0, 0.7);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html {
+            width: 100%; height: 100%; background: #000; color: white;
+            font-family: 'JetBrains Mono', monospace; overflow: hidden;
+        }
+        #video { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; filter: contrast(1.1) brightness(0.8); z-index: 1; }
+        #canvasOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 3; }
+        #canvas { display: none; }
+        .hud-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+        .scanner-line { position: fixed; top: 0; left: 0; width: 100%; height: 4px; background: var(--accent); box-shadow: 0 0 15px var(--accent); opacity: 0.3; z-index: 5; animation: scan 4s linear infinite; }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        .hud-element { pointer-events: auto; }
+        .top-nav { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px; }
+        .brand h1 { font-family: 'Orbitron', sans-serif; font-size: 1.2rem; letter-spacing: 4px; color: var(--primary); text-shadow: 0 0 10px var(--primary); }
+        .sys-info { text-align: right; font-size: 0.7rem; color: var(--accent); }
+        .crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100px; height: 100px; border: 1px solid rgba(0, 242, 255, 0.3); border-radius: 50%; z-index: 2; }
+        .crosshair::before { content: ''; position: absolute; top: 50%; left: -10px; width: 120%; height: 1px; background: rgba(0, 242, 255, 0.2); }
+        .crosshair::after { content: ''; position: absolute; left: 50%; top: -10px; height: 120%; width: 1px; background: rgba(0, 242, 255, 0.2); }
+        .bottom-nav { display: flex; justify-content: space-between; align-items: flex-end; padding: 30px; }
+        .status-box { background: var(--glass); padding: 15px 25px; border-left: 4px solid var(--safe); backdrop-filter: blur(10px); min-width: 200px; }
+        .status-box.alert { border-left-color: var(--danger); animation: pulse-red 1s infinite; box-shadow: 0 0 30px var(--danger); }
+        @keyframes pulse-red { 50% { background: rgba(255, 17, 17, 0.3); } }
+        .log-feed { max-width: 300px; height: 120px; overflow: hidden; font-size: 0.7rem; color: rgba(255,255,255,0.6); display: flex; flex-direction: column-reverse; background: var(--glass); padding: 10px; border-radius: 8px; backdrop-filter: blur(10px); }
+        .action-btns { display: flex; gap: 15px; }
+        .btn { background: transparent; border: 1px solid var(--accent); color: var(--accent); padding: 10px 20px; cursor: pointer; font-family: 'Orbitron', sans-serif; font-size: 0.8rem; transition: all 0.3s; border-radius: 4px; }
+        .btn:hover:not(:disabled) { background: var(--accent); color: black; box-shadow: 0 0 20px var(--accent); }
+        .btn:disabled { opacity: 0.2; cursor: not-allowed; }
+        .btn-stop { border-color: #555; color: #555; }
+        .corner { position: fixed; width: 40px; height: 40px; border: 2px solid rgba(255,255,255,0.2); z-index: 4; }
+        .tl { top: 20px; left: 20px; border-right: 0; border-bottom: 0; }
+        .tr { top: 20px; right: 20px; border-left: 0; border-bottom: 0; }
+        .bl { bottom: 20px; left: 20px; border-right: 0; border-top: 0; }
+        .br { bottom: 20px; right: 20px; border-left: 0; border-top: 0; }
+
+        /* 🔥 NEW GPS MAP MINIATURE */
+        .gps-panel {
+            position: fixed; top: 80px; right: 20px; width: 220px; height: 140px;
+            background: var(--glass); border-radius: 12px; padding: 12px;
+            backdrop-filter: blur(15px); border: 1px solid rgba(0,242,255,0.3);
+            z-index: 6; font-size: 0.65rem;
+        }
+        #gpsMap { width: 100%; height: 90px; border-radius: 8px; }
+        .gps-coords { margin-top: 8px; text-align: center; }
+        .gps-status { color: var(--safe); font-weight: bold; }
+        @media (max-width: 768px) { .gps-panel { display: none; } }
+    </style>
+</head>
+<body>
+    <!-- Video Background -->
+    <video id="video" autoplay muted playsinline></video>
+    
+    <!-- 🔥 BOUNDING BOX OVERLAY -->
+    <canvas id="canvasOverlay"></canvas>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <!-- Scanner Line -->
+    <div class="scanner-line"></div>
+    
+    <!-- Crosshair -->
+    <div class="crosshair"></div>
+
+    <!-- Corner Brackets -->
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+
+    <!-- 🔥 GPS LOCATION PANEL -->
+    <div class="gps-panel" id="gpsPanel" style="display:none;">
+        <div style="font-family: Orbitron; font-size: 0.75rem; color: var(--accent);">GPS TRACKING</div>
+        <div id="gpsMap"></div>
+        <div class="gps-coords">
+            <div id="gpsStatus" class="gps-status">ACQUIRING...</div>
+            <div id="gpsLocation">--°N, --°E</div>
+        </div>
+    </div>
+
+    <!-- HUD Layer -->
+    <div class="hud-layer">
+        <div class="hud-element top-nav">
+            <div class="brand">
+                <h1>FIREGUARD AI</h1>
+                <p style="font-size: 0.6rem; opacity: 0.6;">NEURAL THERMAL UNIT v4.0</p>
+            </div>
+            <div class="sys-info">
+                <div id="gpsDisplay">LAT: --° N</div>
+                <div id="lngDisplay">LNG: --° E</div>
+                <div id="clock">--:--:--</div>
+            </div>
+        </div>
+
+        <div class="hud-element bottom-nav">
+            <div class="status-box" id="statusBox">
+                <div style="font-size: 0.6rem; opacity: 0.6;">MISSION STATUS</div>
+                <div id="statusText" style="font-weight: bold; letter-spacing: 2px;">STANDBY</div>
+                <div id="fireDetail" style="font-size: 0.7rem; color: var(--primary); margin-top: 5px;"></div>
+            </div>
+
+            <div class="log-feed" id="logFeed">
+                <div>> Neural core initializing...</div>
+            </div>
+
+            <div class="action-btns">
+                <button id="startBtn" class="btn">ENGAGE</button>
+                <button id="stopBtn" class="btn btn-stop" disabled>DISENGAGE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet for GPS map (FREE) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+        // Elements
+        let video = document.getElementById('video');
+        let canvasOverlay = document.getElementById('canvasOverlay');
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let overlayCtx = canvasOverlay.getContext('2d');
+        let stream = null;
+        let detectInterval = null;
+        let isDetecting = false;
+        let gpsMap = null;
+        let userMarker = null;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusBox = document.getElementById('statusBox');
+        const statusText = document.getElementById('statusText');
+        const logFeed = document.getElementById('logFeed');
+        const fireDetail = document.getElementById('fireDetail');
+
+        // 🔥 REAL BROWSER GPS
+        let currentGPS = { lat: 13.0827, lng: 80.2707 };
+
+        function addLog(msg) {
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            logFeed.appendChild(div);
+            if (logFeed.childNodes.length > 6) logFeed.removeChild(logFeed.firstChild);
+        }
+
+        // 🔥 INITIALIZE GPS MAP
+        function initGPSMap() {
+            const gpsMapEl = document.getElementById('gpsMap');
+            gpsMap = L.map('gpsMap', {
+                zoomControl: false,
+                scrollWheelZoom: false,
+                dragging: false
+            }).setView([currentGPS.lat, currentGPS.lng], 15);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '',
+                maxZoom: 19
+            }).addTo(gpsMap);
+
+            userMarker = L.circleMarker([currentGPS.lat, currentGPS.lng], {
+                radius: 8,
+                fillColor: '#00f2ff',
+                color: '#00f2ff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(gpsMap);
+        }
+
+        // 🔥 UPDATE GPS DISPLAY
+        function updateGPSDisplay(lat, lng) {
+            currentGPS = { lat, lng };
+            document.getElementById('gpsDisplay').textContent = `LAT: ${lat.toFixed(4)}° N`;
+            document.getElementById('lngDisplay').textContent = `LNG: ${lng.toFixed(4)}° E`;
+            document.getElementById('gpsLocation').textContent = `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+
+            if (gpsMap && userMarker) {
+                gpsMap.setView([lat, lng], 15);
+                userMarker.setLatLng([lat, lng]);
+            }
+        }
+
+        // 🔥 GET BROWSER GPS
+        async function getCurrentGPS() {
+            return new Promise((resolve) => {
+                if (!navigator.geolocation) {
+                    addLog('Geolocation not supported. Using fallback.');
+                    resolve(currentGPS);
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const gps = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        updateGPSDisplay(gps.lat, gps.lng);
+                        addLog(`GPS acquired: ${gps.lat.toFixed(4)}°, ${gps.lng.toFixed(4)}°`);
+                        document.getElementById('gpsStatus').textContent = 'GPS LOCKED';
+                        document.getElementById('gpsPanel').style.display = 'block';
+                        resolve(gps);
+                    },
+                    (error) => {
+                        addLog('GPS permission denied. Using fallback location.');
+                        resolve(currentGPS);
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+                );
+            });
+        }
+
+        // 🔥 CHOOSE BEST CAMERA (mobile + laptop friendly)
+        async function getPreferredStream() {
+            try {
+                // Ask for any video first so labels are available in some browsers
+                await navigator.mediaDevices.getUserMedia({ video: true });
+            } catch (e) {
+                // ignore; will retry below with constraints
+            }
+
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+            // Try to find a rear/environment camera by label (mobile)
+            const envCam = videoDevices.find(d =>
+                /back|rear|environment/i.test(d.label)
+            );
+
+            let constraints;
+
+            if (envCam) {
+                constraints = {
+                    video: {
+                        deviceId: { exact: envCam.deviceId },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+            } else {
+                // Fallback: prefer environment but allow browser to choose (works on laptops)
+                constraints = {
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+            }
+
+            return navigator.mediaDevices.getUserMedia(constraints);
+        }
+
+        // Clock
+        setInterval(() => {
+            document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+        }, 1000);
+
+        startBtn.onclick = async () => {
+            try {
+                await getCurrentGPS();
+                initGPSMap();
+
+                // ✅ updated camera logic (mobile + laptop)
+                stream = await getPreferredStream();
+
+                video.srcObject = stream;
+                await video.play();
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusText.textContent = "ACTIVE SCAN";
+                statusBox.classList.remove('alert');
+                addLog("🔥 FireGuard AI ENGAGED");
+                addLog("Neural core + GPS online");
+                isDetecting = true;
+                detectInterval = setInterval(detectFrame, 800);
+            } catch (e) {
+                console.error(e);
+                addLog("Error: Camera/GPS access denied or unavailable");
+            }
+        };
+
+        stopBtn.onclick = () => {
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            clearInterval(detectInterval);
+            isDetecting = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusText.textContent = "STANDBY";
+            statusBox.classList.remove('alert');
+            fireDetail.textContent = "";
+            overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+            addLog("System disengaged");
+        };
+
+        // 🔥 BOUNDING BOX DRAWING
+        function drawBoundingBoxes(boxes) {
+            canvasOverlay.width = video.videoWidth || 1280;
+            canvasOverlay.height = video.videoHeight || 720;
+
+            overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+
+            if (!boxes || boxes.length === 0) return;
+
+            boxes.forEach(box => {
+                const scaleX = (video.videoWidth || 1280) / 640;
+                const scaleY = (video.videoHeight || 720) / 360;
+
+                const x1 = box.x1 * scaleX;
+                const y1 = box.y1 * scaleY;
+                const x2 = box.x2 * scaleX;
+                const y2 = box.y2 * scaleY;
+
+                const width = x2 - x1;
+                const height = y2 - y1;
+                const cornerLen = Math.min(width, height) * 0.2;
+
+                overlayCtx.strokeStyle = '#ff3232';
+                overlayCtx.lineWidth = 3;
+                overlayCtx.setLineDash([]);
+
+                overlayCtx.beginPath();
+                overlayCtx.moveTo(x1, y1 + cornerLen); overlayCtx.lineTo(x1, y1); overlayCtx.lineTo(x1 + cornerLen, y1);
+                overlayCtx.moveTo(x2 - cornerLen, y1); overlayCtx.lineTo(x2, y1); overlayCtx.lineTo(x2, y1 + cornerLen);
+                overlayCtx.moveTo(x2, y2 - cornerLen); overlayCtx.lineTo(x2, y2); overlayCtx.lineTo(x2 - cornerLen, y2);
+                overlayCtx.moveTo(x1 + cornerLen, y2); overlayCtx.lineTo(x1, y2); overlayCtx.lineTo(x1, y2 - cornerLen);
+                overlayCtx.stroke();
+
+                overlayCtx.shadowColor = '#ff3232';
+                overlayCtx.shadowBlur = 15;
+                overlayCtx.stroke();
+                overlayCtx.shadowBlur = 0;
+
+                const label = `FIRE ${(box.confidence * 100).toFixed(0)}%`;
+                overlayCtx.font = 'bold 16px Orbitron';
+                const textMetrics = overlayCtx.measureText(label);
+                const padding = 8;
+
+                overlayCtx.fillStyle = 'rgba(255, 50, 50, 0.9)';
+                overlayCtx.fillRect(x1 - 2, y1 - 30, textMetrics.width + padding * 2, 24);
+
+                overlayCtx.fillStyle = '#ffffff';
+                overlayCtx.textAlign = 'left';
+                overlayCtx.textBaseline = 'top';
+                overlayCtx.fillText(label, x1 + padding, y1 - 26);
+
+                overlayCtx.font = '12px JetBrains Mono';
+                overlayCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                overlayCtx.fillText(`${Math.round(width * height)}px²`, x1, y2 + 5);
+            });
+        }
+
+        async function detectFrame() {
+            if (!isDetecting) return;
+
+            canvas.width = 640;
+            canvas.height = 360;
+            ctx.drawImage(video, 0, 0, 640, 360);
+            const dataURL = canvas.toDataURL('image/jpeg', 0.7);
+
+            try {
+                const response = await fetch('/api/detect/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: dataURL,
+                        latitude: currentGPS.lat,
+                        longitude: currentGPS.lng
+                    })
+                });
+                const result = await response.json();
+
+                drawBoundingBoxes(result.bounding_boxes);
+
+                if (result.fire_detected && result.alert) {
+                    statusText.textContent = "FIRE DETECTED";
+                    statusBox.classList.add('alert');
+                    fireDetail.textContent = `MAGNITUDE: ${result.fire_size.toLocaleString()}px`;
+                    addLog(`🚨 FIRE ALERT: ${result.fire_size}px | GPS: ${currentGPS.lat.toFixed(4)}, ${currentGPS.lng.toFixed(4)}`);
+
+                    document.body.style.animation = 'pulse-red 0.5s';
+                    setTimeout(() => document.body.style.animation = '', 500);
+                } else {
+                    statusText.textContent = "ACTIVE SCAN";
+                    statusBox.classList.remove('alert');
+                    fireDetail.textContent = "";
+                }
+            } catch (e) {
+                addLog("Connection unstable...");
+            }
+        }
+</script>
+
+</body>
+</html>
