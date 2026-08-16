@@ -15,10 +15,8 @@ Comprehensive project documentation for FireGuard_AI — an end-to-end fire and 
 - [Quick Start](#quick-start)
 - [Training a Model](#training-a-model)
 - [Running Inference](#running-inference)
-- [API](#api)
 - [Evaluation](#evaluation)
 - [Deployment](#deployment)
-- [Docker](#docker)
 - [Data Management](#data-management)
 - [Security & Privacy](#security--privacy)
 - [Troubleshooting](#troubleshooting)
@@ -162,27 +160,6 @@ Key flags:
 - --save-output: directory to save annotated frames or video
 - --gpu: enable GPU inference
 
----
-
-## API
-
-If the repository includes an API server, typical endpoints:
-
-- POST /infer - run inference on an uploaded image or URL
-- POST /stream - register a camera stream for continuous inference
-- GET /status - health check
-- GET /metrics - detection statistics and recent alerts
-
-Example request to /infer (application/json):
-
-{
-  "image_url": "https://example.com/frame.jpg",
-  "confidence": 0.5
-}
-
-Response: JSON with bounding boxes, scores, and class labels.
-
----
 
 ## Evaluation
 
@@ -203,27 +180,12 @@ Record results and visualize confusion matrices to understand common failure mod
 
 ## Deployment
 
-Deployment options provided in this repository may include:
-- Docker container for the inference server
-- Systemd service example for Linux hosts
-- Kubernetes deployment manifests (example)
 
 General steps for production deployment:
 1. Build or pull the Docker image.
 2. Run the container with access to the camera stream(s) and GPU (if needed).
 3. Configure monitoring and logging (Prometheus, Grafana, ELK).
 4. Set up alerting (webhooks, email, SMS, or integration with incident management tools).
-
----
-
-## Docker
-
-If a Dockerfile is included, build and run with:
-
-   docker build -t fireguard_ai:latest .
-   docker run --gpus all -p 8000:8000 -v /path/to/data:/app/data fireguard_ai:latest
-
-Adjust flags for GPU or device access as required.
 
 ---
 
